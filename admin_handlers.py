@@ -587,6 +587,10 @@ def handle_admin_directions_add_desc(vk, peer_id, user_id, text, state_data):
 
 
 def handle_admin_directions_edit_id(vk, peer_id, user_id, text, state_data):
+    if text == "◀ Назад":
+        show_admin_directions(vk, peer_id, user_id)
+        return True
+    
     try:
         direction_id = int(text)
         direction = get_direction_by_id(direction_id)
@@ -657,7 +661,7 @@ def handle_admin_directions_edit_id(vk, peer_id, user_id, text, state_data):
         return True
         
     except ValueError:
-        send_message(vk, peer_id, "❌ Введите число (ID направления)")
+        send_message(vk, peer_id, "❌ Введите число (ID направления) или нажмите ◀ Назад")
         return True
 
 
@@ -705,12 +709,16 @@ def handle_admin_directions_edit_data(vk, peer_id, user_id, text, state_data):
 
 
 def handle_admin_directions_delete(vk, peer_id, user_id, text, state_data):
+    if text == "◀ Назад":
+        show_admin_directions(vk, peer_id, user_id)
+        return True
+    
     try:
         direction_id = int(text)
         success, msg = delete_direction(direction_id)
         send_message(vk, peer_id, msg)
     except ValueError:
-        send_message(vk, peer_id, "❌ Введите число (ID направления)")
+        send_message(vk, peer_id, "❌ Введите число (ID направления) или нажмите ◀ Назад")
     
     show_admin_directions(vk, peer_id, user_id)
     return True
@@ -1391,9 +1399,6 @@ def handle_admin_programs_edit_id(vk, peer_id, user_id, text, state_data):
             send_message(vk, peer_id, "Введите ID программы для редактирования:\n(или нажмите ◀ Назад для возврата)")
             return True
         
-        # Получаем список направлений
-        directions = get_all_directions_for_select()
-        
         set_user_state(user_id, 'admin_programs_edit_data', {'program_id': program_id})
         
         # Преобразуем срок обучения
@@ -1408,23 +1413,18 @@ def handle_admin_programs_edit_id(vk, peer_id, user_id, text, state_data):
         message = f"✏️ **РЕДАКТИРОВАНИЕ ПРОГРАММЫ**\n\n"
         message += f"Текущие данные:\n"
         message += f"ID: {program[0]}\n"
-        message += f"Направление ID: {program[1]}\n"
-        message += f"Код/Название: {program[2]} - {program[3]}\n"
+        message += f"Направление: {program[2]} - {program[3]}\n"
         message += f"Форма обучения: {program[4]}\n"
         message += f"Срок обучения: {duration_text}\n"
         message += f"Бюджетных мест: {program[6]}\n"
         message += f"Платных мест: {program[7]}\n"
         message += f"Стоимость: {program[8]:,.0f} руб/год\n\n"
         
-        message += "📋 **ДОСТУПНЫЕ НАПРАВЛЕНИЯ:**\n"
-        for dir_row in directions:
-            message += f"  • {dir_row[0]}. {dir_row[1]} - {dir_row[2]} ({dir_row[3]})\n"
-        
-        message += f"\n📝 **Введите новые данные в формате:**\n"
-        message += f"ID_НАПРАВЛЕНИЯ,ФОРМА_ОБУЧЕНИЯ,СРОК_В_ГОДАХ,БЮДЖЕТ_МЕСТ,ПЛАТНЫХ_МЕСТ,СТОИМОСТЬ\n\n"
+        message += f"📝 **Введите новые данные в формате:**\n"
+        message += f"ФОРМА_ОБУЧЕНИЯ,СРОК_В_ГОДАХ,БЮДЖЕТ_МЕСТ,ПЛАТНЫХ_МЕСТ,СТОИМОСТЬ\n\n"
         message += f"Форма обучения: Очная, Очно-заочная или Заочная\n"
         message += f"Срок: число (например: 4, 4.5, 5)\n\n"
-        message += f"**Пример:** {program[1]},Очная,4,25,15,150000"
+        message += f"**Пример:** {program[4]},{duration_years},{program[6]},{program[7]},{program[8]}"
         
         send_message(vk, peer_id, message)
         return True
@@ -1441,30 +1441,31 @@ def handle_admin_programs_edit_data(vk, peer_id, user_id, text, state_data):
     
     try:
         parts = [p.strip() for p in text.split(',')]
-        if len(parts) < 6:
-            send_message(vk, peer_id, "❌ Неверный формат! Используйте: ID_НАПРАВЛЕНИЯ,ФОРМА_ОБУЧЕНИЯ,СРОК_В_ГОДАХ,БЮДЖЕТ_МЕСТ,ПЛАТНЫХ_МЕСТ,СТОИМОСТЬ")
-            send_message(vk, peer_id, "Пример: 1,Очная,4,25,15,150000")
+        if len(parts) < 5:
+            send_message(vk, peer_id, "❌ Неверный формат! Используйте: ФОРМА_ОБУЧЕНИЯ,СРОК_В_ГОДАХ,БЮДЖЕТ_МЕСТ,ПЛАТНЫХ_МЕСТ,СТОИМОСТЬ")
+            send_message(vk, peer_id, "Пример: Очная,4,25,15,150000")
             return True
         
-        direction_id = int(parts[0])
-        study_form = parts[1]
-        duration_years = float(parts[2].replace(',', '.'))
-        budget_places = int(parts[3])
-        paid_places = int(parts[4])
-        tuition_fee = int(parts[5].replace(' ', ''))
+        study_form = parts[0]
+        duration_years = float(parts[1].replace(',', '.'))
+        budget_places = int(parts[2])
+        paid_places = int(parts[3])
+        tuition_fee = int(parts[4].replace(' ', ''))
         
         # Проверяем корректность формы обучения
         if study_form not in ['Очная', 'Очно-заочная', 'Заочная']:
             send_message(vk, peer_id, "❌ Форма обучения должна быть: Очная, Очно-заочная или Заочная")
             return True
         
-        # Проверяем существование направления
-        direction = get_direction_by_id(direction_id)
-        if not direction:
-            send_message(vk, peer_id, "❌ Направление с таким ID не найдено!")
+        program_id = state_data.get('program_id')
+        program = get_program_by_id(program_id)
+        if not program:
+            send_message(vk, peer_id, "❌ Программа не найдена!")
             return True
         
-        program_id = state_data.get('program_id')
+        # Используем существующее направление
+        direction_id = program[1]
+        
         success, msg = edit_program(program_id, direction_id, study_form, duration_years, budget_places, paid_places, tuition_fee)
         send_message(vk, peer_id, msg)
         
